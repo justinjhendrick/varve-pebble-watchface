@@ -2,11 +2,11 @@
   "name": "varve",
   "author": "justinjhendrick",
   "version": "1.0.0",
-  "keywords": ["digital", "bands", "layers", "minimal"],
+  "keywords": ["digital", "nordic", "runes", "bands", "layers", "minimal"],
   "private": true,
   "dependencies": {},
   "pebble": {
-    "displayName": "varve",
+    "displayName": "Varv",
     "uuid": "df521b77-5ee3-48be-9554-2cfab66fd583",
     "sdkVersion": "3",
     "enableMultiJS": true,
