@@ -1,8 +1,8 @@
 {
   "name": "varve",
-  "author": "MakeAwesomeHappen",
+  "author": "justinjhendrick",
   "version": "1.0.0",
-  "keywords": ["pebble-app"],
+  "keywords": ["digital", "bands", "layers", "minimal"],
   "private": true,
   "dependencies": {},
   "pebble": {
@@ -13,13 +13,12 @@
     "targetPlatforms": [
       "aplite",
       "basalt",
-      "chalk",
       "diorite",
       "emery",
       "flint"
     ],
     "watchapp": {
-      "watchface": false
+      "watchface": true
     },
     "messageKeys": [
       "dummy"
