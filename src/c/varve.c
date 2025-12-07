@@ -3,13 +3,28 @@
 typedef struct ClaySettings {
   GColor color_background;
   GColor color_hour;
+  GColor color_minute;
+  GColor color_border;
+  GColor color_date;
   uint8_t reserved[40]; // for later growth
 } __attribute__((__packed__)) ClaySettings;
 
+#define DEBUG (false)
+#define BUFFER_LEN (40)
+
 static Window* window;
 static Layer* layer;
-static GPoint points[20];
+static GPoint points[16];
 static ClaySettings settings;
+static char buffer[BUFFER_LEN];
+
+static void default_settings() {
+  settings.color_background = GColorWhite;
+  settings.color_hour = GColorBlack;
+  settings.color_minute = GColorBlack;
+  settings.color_border = GColorBlack;
+  settings.color_date = GColorWhite;
+}
 
 static int fill_0() {
   points[0]  = (GPoint){.x=2, .y=0};
@@ -114,7 +129,7 @@ static int fill_9() {
   return 8;
 }
 
-static void draw_digit(GContext* ctx, int digit, GPoint tl_corner, int w) {
+static void draw_digit(GContext* ctx, int digit, int w, GPoint tl_corner) {
   int num_points = 0;
   switch (digit) {
     case 0: num_points = fill_0(); break;
@@ -129,7 +144,7 @@ static void draw_digit(GContext* ctx, int digit, GPoint tl_corner, int w) {
     case 9: num_points = fill_9(); break;
     default: break;
   }
-  int b = w / 4;  // block size
+  int b = w / 4;
   graphics_context_set_stroke_width(ctx, b);
   for (int i = 1; i < num_points; i++) {
     GPoint* prev = points + i - 1;
@@ -142,24 +157,103 @@ static void draw_digit(GContext* ctx, int digit, GPoint tl_corner, int w) {
   }
 }
 
+static void make_borders(GRect* out, GRect in, int xborder, int yborder) {
+  int text_vertical_fudge = 4;
+  int y = in.origin.y;
+  out[0] = (GRect){
+    .origin = (GPoint){.x = in.origin.x, .y = y - text_vertical_fudge},
+    .size = (GSize){.w = in.size.w, .h = yborder}
+  };
+  y += yborder;
+  int main_h = in.size.h - 2 * yborder;
+  out[1] = (GRect){
+    .origin = (GPoint){.x = in.origin.x + xborder, .y = y},
+    .size = (GSize){.w = in.size.w - 2 * xborder, .h = main_h}
+  };
+  y += main_h;
+  out[2] = (GRect){
+    .origin = (GPoint){.x = in.origin.x, .y = y - text_vertical_fudge},
+    .size = (GSize){.w = in.size.w, .h = yborder}
+  };
+}
+
+static void format_day_of_week(struct tm* now, char* buf, int len) {
+  strftime(buf, len, "%A", now);
+}
+
+static void format_day_and_month(struct tm* now, char* buf, int len) {
+  strftime(buf, len, "%B %e", now);
+}
+
+static int get_hours(struct tm* now) {
+  int hours = now->tm_hour;
+  if (DEBUG) {
+    hours = now->tm_sec % 24;
+  }
+  if (!clock_is_24h_style()) {
+    hours = hours % 12;
+    if (hours == 0) {
+      hours = 12;
+    }
+  }
+  return hours;
+}
+  
+static int get_minutes(struct tm* now) {
+  int minutes = now->tm_min;
+  if (DEBUG) {
+    minutes = now->tm_sec;
+  }
+  return minutes;
+}
+
 static void update_layer(Layer* layer, GContext* ctx) {
   time_t temp = time(NULL);
   struct tm* now = localtime(&temp);
-  GRect bounds = layer_get_bounds(layer);
-  window_set_background_color(window, settings.color_background);
+
+  GRect boxes[3];
+  make_borders(boxes, layer_get_bounds(layer), 0, 26);
+  GRect upper_border = boxes[0];
+  GRect bounds = boxes[1];
+  GRect lower_border = boxes[2];
+
+  window_set_background_color(window, settings.color_border);
+  graphics_context_set_fill_color(ctx, settings.color_background);
+  graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24);
+
+  format_day_of_week(now, buffer, BUFFER_LEN);
+  graphics_draw_text(ctx, buffer, font, upper_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  format_day_and_month(now, buffer, BUFFER_LEN);
+  graphics_draw_text(ctx, buffer, font, lower_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+
   graphics_context_set_stroke_color(ctx, settings.color_hour);
-  int w = bounds.size.w / 7;
-  int gap = bounds.size.w / 20;
-  int digit = 0;
-  int h = w * 2;
-  for (int iy = 0; iy < 2; iy++) {
-    for (int ix = 0; ix < 5; ix++) {
-      int x = gap + ix * (gap + w);
-      int y = gap + iy * (gap + h);
-      draw_digit(ctx, digit, (GPoint){.x=x, .y=y}, w);
-      digit++;
-    }
+  int hour_width = bounds.size.w * 3 / 4;
+  int hour_digit_gap = 7;
+  if (bounds.size.w > 160) {
+    hour_digit_gap = 8; // emery
   }
+  int hour_digit_width = (hour_width - 4 * hour_digit_gap) / 2;
+  int hour_digit_height = hour_digit_width * 2;
+  int extra_hour_space = bounds.size.h - hour_digit_height;
+  int hour_digit_y = bounds.origin.y + extra_hour_space / 2;
+  int hours = get_hours(now);
+  draw_digit(ctx, hours / 10, hour_digit_width, (GPoint){.x=bounds.origin.x + 1 * hour_digit_gap,                    .y=hour_digit_y});
+  draw_digit(ctx, hours % 10, hour_digit_width, (GPoint){.x=bounds.origin.x + 3 * hour_digit_gap + hour_digit_width, .y=hour_digit_y});
+
+  graphics_context_set_stroke_color(ctx, settings.color_minute);
+  int minute_width = bounds.size.w - hour_width;
+  int minute_digit_gap = 2;
+  if (bounds.size.w > 160) {
+    minute_digit_gap = 3; // emery
+  }
+  int minute_digit_width = (minute_width - 4 * minute_digit_gap) / 2;
+  int minute_digit_height = minute_digit_width * 2;
+  int r = bounds.origin.x + bounds.size.w;
+  int minutes = get_minutes(now);
+  int minute_y = hour_digit_y + minutes * (hour_digit_height - minute_digit_height) / 60;
+  draw_digit(ctx, minutes % 10, minute_digit_width, (GPoint){.x=r - 1 * minute_digit_gap - 1 * minute_digit_width, .y=minute_y});
+  draw_digit(ctx, minutes / 10, minute_digit_width, (GPoint){.x=r - 3 * minute_digit_gap - 2 * minute_digit_width, .y=minute_y});
 }
 
 static void window_load(Window* window) {
@@ -180,10 +274,6 @@ static void tick_handler(struct tm* now, TimeUnits unitchanged) {
 }
 
 // TODO Configuration
-static void default_settings() {
-  settings.color_background = GColorWhite;
-  settings.color_hour = GColorBlack;
-}
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {}
 
 static void init(void) {
@@ -197,7 +287,7 @@ static void init(void) {
     .unload = window_unload,
   });
   window_stack_push(window, true);
-  tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+  tick_timer_service_subscribe(DEBUG ? SECOND_UNIT : MINUTE_UNIT, tick_handler);
 }
 
 static void deinit(void) {
