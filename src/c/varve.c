@@ -4,7 +4,6 @@ typedef struct ClaySettings {
   GColor color_background;
   GColor color_hour;
   GColor color_minute;
-  GColor color_ampm;
   GColor color_border;
   GColor color_date;
   uint8_t reserved[40]; // for later growth
@@ -24,7 +23,6 @@ static void default_settings() {
   settings.color_background = GColorWhite;
   settings.color_hour = GColorBlack;
   settings.color_minute = GColorBlack;
-  settings.color_ampm = GColorBlack;
   settings.color_border = GColorBlack;
   settings.color_date = GColorWhite;
 }
@@ -198,27 +196,27 @@ static void draw_char(GContext* ctx, char c, int block_size, GPoint tl_corner) {
 typedef struct Dimensions {
   int actual_width;
   int block_size;
-  int xborder;
+  int border;
   int gap;
   int char_width;
   int height;
 } Dimensions;
 
-static Dimensions get_str_dimensions(int combined_width, bool include_xborder) {
+static Dimensions get_str_dimensions(int combined_width) {
   Dimensions d;
-  int total_blocks = (9 + include_xborder);
+  int total_blocks = 10;
   d.block_size = combined_width / total_blocks;
   d.actual_width = combined_width - (combined_width % total_blocks);
-  d.xborder = include_xborder ? (d.block_size / 2) : 0;
-  d.gap = d.block_size;
-  d.char_width = 4 * d.block_size;
-  d.height = 2 * d.char_width;
+  d.border = d.block_size / 2;
+  d.gap = d.block_size; // between chars
+  d.char_width = 4 * d.block_size; // does not include stroke width
+  d.height = 2 * d.char_width; // does not include stroke width
   return d;
 }
 
 static void draw_str(GContext* ctx, char c1, char c2, Dimensions d, GPoint tl_corner) {
-  draw_char(ctx, c1, d.block_size, (GPoint){.x=tl_corner.x + d.xborder,                        .y=tl_corner.y});
-  draw_char(ctx, c2, d.block_size, (GPoint){.x=tl_corner.x + d.xborder + d.char_width + d.gap, .y=tl_corner.y});
+  draw_char(ctx, c1, d.block_size, (GPoint){.x=tl_corner.x + d.border,                        .y=tl_corner.y});
+  draw_char(ctx, c2, d.block_size, (GPoint){.x=tl_corner.x + d.border + d.char_width + d.gap, .y=tl_corner.y});
 }
 
 static void make_borders(GRect* out, GRect in, int xborder, int yborder) {
@@ -313,7 +311,7 @@ static void update_layer(Layer* layer, GContext* ctx) {
 
   // hours
   int desired_hour_width = main_area.size.w * 3 / 4;
-  Dimensions hour_dims = get_str_dimensions(desired_hour_width, true);
+  Dimensions hour_dims = get_str_dimensions(desired_hour_width);
   int extra_hour_space = main_area.size.h - hour_dims.height;
   int hour_digit_y = main_area.origin.y + extra_hour_space / 2;
   int hours = get_hours(now);
@@ -326,15 +324,9 @@ static void update_layer(Layer* layer, GContext* ctx) {
     (GPoint){.x=main_area.origin.x, .y=hour_digit_y}
   );
 
-  // minutes & ampm
+  // minutes
   int minute_width = main_area.size.w - hour_dims.actual_width;
-  Dimensions minute_dims = get_str_dimensions(minute_width, true);
-  //if (is_12h()) {
-  //  Dimensions ampm_dims = get_str_dimensions(minute_width / 2, true);
-  //  char ap = now->tm_hour < 12 ? 'A' : 'P';
-  //  graphics_context_set_stroke_color(ctx, settings.color_ampm);
-  //  draw_str(ctx, ap, 'M', ampm_dims, (GPoint){.x=main_area.origin.x + main_area.size.w - ampm_dims.actual_width, .y=lower_border.origin.y - ampm_dims.height});
-  //}
+  Dimensions minute_dims = get_str_dimensions(minute_width);
   int minutes = get_minutes(now);
   int minute_y = hour_digit_y + minutes * (hour_dims.height - minute_dims.height) / 60;
   graphics_context_set_stroke_color(ctx, settings.color_minute);
