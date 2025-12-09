@@ -11,7 +11,7 @@ typedef struct ClaySettings {
 } __attribute__((__packed__)) ClaySettings;
 
 #define DEBUG (false)
-#define FORCE_12H (true)
+#define FORCE_12H (false)
 #define BUFFER_LEN (40)
 
 static Window* window;
@@ -255,9 +255,7 @@ static void format_day_of_week(struct tm* now, char* buf, int len) {
 }
 
 static void format_am_pm(struct tm* now, char* buf, int len) {
-  if (is_12h()) {
-    strftime(buf, len, "%p", now);
-  }
+  strftime(buf, len, "%p", now);
 }
 
 static void format_day_and_month(struct tm* now, char* buf, int len) {
