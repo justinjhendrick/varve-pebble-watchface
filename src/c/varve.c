@@ -219,29 +219,33 @@ static void draw_str(GContext* ctx, char c1, char c2, Dimensions d, GPoint tl_co
   draw_char(ctx, c2, d.block_size, (GPoint){.x=tl_corner.x + d.border + d.char_width + d.gap, .y=tl_corner.y});
 }
 
-static void make_borders(GRect* out, GRect in, int xborder, int yborder) {
+typedef struct Areas {
+  GRect upper_border;
+  GRect main;
+  GRect lower_border;
+} Areas;
+
+static Areas make_borders(GRect in, int xborder, int yborder) {
   int text_yfudge = 4;
   int text_xfudge = 2;
   int y = in.origin.y;
-  out[0] = (GRect){
+  Areas a;
+  a.upper_border = (GRect){
     .origin = (GPoint){.x = in.origin.x + text_xfudge, .y = y - text_yfudge},
-    .size = (GSize){.w = in.size.w / 2, .h = yborder}
-  };
-  out[1] = (GRect){
-    .origin = (GPoint){.x = in.origin.x + in.size.w / 2, .y = y - text_yfudge},
-    .size = (GSize){.w = in.size.w / 2 - text_xfudge, .h = yborder}
+    .size = (GSize){.w = in.size.w  - 2 * text_xfudge, .h = yborder}
   };
   y += yborder;
   int main_h = in.size.h - 2 * yborder;
-  out[2] = (GRect){
+  a.main = (GRect){
     .origin = (GPoint){.x = in.origin.x + xborder, .y = y},
     .size = (GSize){.w = in.size.w - 2 * xborder, .h = main_h}
   };
   y += main_h;
-  out[3] = (GRect){
-    .origin = (GPoint){.x = in.origin.x, .y = y - text_yfudge},
-    .size = (GSize){.w = in.size.w, .h = yborder}
+  a.lower_border = (GRect){
+    .origin = (GPoint){.x = in.origin.x + text_xfudge, .y = y - text_yfudge},
+    .size = (GSize){.w = in.size.w - 2 * text_xfudge, .h = yborder}
   };
+  return a;
 }
 
 static bool is_12h() {
@@ -290,30 +294,29 @@ static void update_layer(Layer* layer, GContext* ctx) {
   time_t temp = time(NULL);
   struct tm* now = localtime(&temp);
 
-  GRect boxes[4];
-  make_borders(boxes, layer_get_bounds(layer), 0, 26);
-  GRect lupper_border = boxes[0];
-  GRect rupper_border = boxes[1];
-  GRect main_area = boxes[2];
-  GRect lower_border = boxes[3];
-
+  Areas areas = make_borders(layer_get_bounds(layer), 0, 26);
   window_set_background_color(window, settings.color_border);
   graphics_context_set_fill_color(ctx, settings.color_background);
-  graphics_fill_rect(ctx, main_area, 0, GCornerNone);
+  graphics_fill_rect(ctx, areas.main, 0, GCornerNone);
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24);
 
-  format_day_of_week(now, buffer, BUFFER_LEN);
-  graphics_draw_text(ctx, buffer, font, lupper_border, GTextOverflowModeFill, GTextAlignmentLeft, NULL);
-  format_am_pm(now, buffer, BUFFER_LEN);
-  graphics_draw_text(ctx, buffer, font, rupper_border, GTextOverflowModeFill, GTextAlignmentRight, NULL);
+  if (is_12h()) {
+    format_day_of_week(now, buffer, BUFFER_LEN);
+    graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+    format_am_pm(now, buffer, BUFFER_LEN);
+    graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentRight, NULL);
+  } else {
+    format_day_of_week(now, buffer, BUFFER_LEN);
+    graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  }
   format_day_and_month(now, buffer, BUFFER_LEN);
-  graphics_draw_text(ctx, buffer, font, lower_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  graphics_draw_text(ctx, buffer, font, areas.lower_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
   // hours
-  int desired_hour_width = main_area.size.w * 3 / 4;
+  int desired_hour_width = areas.main.size.w * 3 / 4;
   Dimensions hour_dims = get_str_dimensions(desired_hour_width);
-  int extra_hour_space = main_area.size.h - hour_dims.height;
-  int hour_digit_y = main_area.origin.y + extra_hour_space / 2;
+  int extra_hour_space = areas.main.size.h - hour_dims.height;
+  int hour_digit_y = areas.main.origin.y + extra_hour_space / 2;
   int hours = get_hours(now);
   graphics_context_set_stroke_color(ctx, settings.color_hour);
   draw_str(
@@ -321,16 +324,16 @@ static void update_layer(Layer* layer, GContext* ctx) {
     is_12h() && hours < 10 ? '\0' : to_char(hours / 10),
     to_char(hours % 10),
     hour_dims,
-    (GPoint){.x=main_area.origin.x, .y=hour_digit_y}
+    (GPoint){.x=areas.main.origin.x, .y=hour_digit_y}
   );
 
   // minutes
-  int minute_width = main_area.size.w - hour_dims.actual_width;
+  int minute_width = areas.main.size.w - hour_dims.actual_width;
   Dimensions minute_dims = get_str_dimensions(minute_width);
   int minutes = get_minutes(now);
   int minute_y = hour_digit_y + minutes * (hour_dims.height - minute_dims.height) / 60;
   graphics_context_set_stroke_color(ctx, settings.color_minute);
-  draw_str(ctx, to_char(minutes / 10), to_char(minutes % 10), minute_dims, (GPoint){.x=main_area.origin.x + hour_dims.actual_width, .y=minute_y});
+  draw_str(ctx, to_char(minutes / 10), to_char(minutes % 10), minute_dims, (GPoint){.x=areas.main.origin.x + hour_dims.actual_width, .y=minute_y});
 }
 
 static void window_load(Window* window) {
