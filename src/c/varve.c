@@ -20,11 +20,11 @@ static ClaySettings settings;
 static char buffer[BUFFER_LEN];
 
 static void default_settings() {
-  settings.color_background = GColorWhite;
-  settings.color_hour = GColorBlack;
-  settings.color_minute = GColorBlack;
-  settings.color_border = GColorBlack;
-  settings.color_date = GColorWhite;
+  settings.color_background = GColorBlack;
+  settings.color_hour = COLOR_FALLBACK(GColorMelon, GColorWhite);
+  settings.color_minute = COLOR_FALLBACK(GColorCeleste, GColorWhite);
+  settings.color_border = COLOR_FALLBACK(GColorMintGreen, GColorWhite);
+  settings.color_date = GColorBlack;
 }
 
 static int fill_0() {
@@ -227,12 +227,12 @@ typedef struct Areas {
 
 static Areas make_borders(GRect in, int xborder, int yborder) {
   int text_yfudge = 4;
-  int text_xfudge = 2;
+  int text_xfudge = 8;
   int y = in.origin.y;
   Areas a;
   a.upper_border = (GRect){
     .origin = (GPoint){.x = in.origin.x + text_xfudge, .y = y - text_yfudge},
-    .size = (GSize){.w = in.size.w  - 2 * text_xfudge, .h = yborder}
+    .size = (GSize){.w = in.size.w - 2 * text_xfudge, .h = yborder}
   };
   y += yborder;
   int main_h = in.size.h - 2 * yborder;
@@ -294,12 +294,13 @@ static void update_layer(Layer* layer, GContext* ctx) {
   time_t temp = time(NULL);
   struct tm* now = localtime(&temp);
 
-  Areas areas = make_borders(layer_get_bounds(layer), 0, 26);
+  Areas areas = make_borders(layer_get_bounds(layer), 0, 30);
   window_set_background_color(window, settings.color_border);
   graphics_context_set_fill_color(ctx, settings.color_background);
   graphics_fill_rect(ctx, areas.main, 0, GCornerNone);
-  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24);
+  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_28);
 
+  graphics_context_set_text_color(ctx, settings.color_date);
   if (is_12h()) {
     format_day_of_week(now, buffer, BUFFER_LEN);
     graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentLeft, NULL);
@@ -321,7 +322,7 @@ static void update_layer(Layer* layer, GContext* ctx) {
   graphics_context_set_stroke_color(ctx, settings.color_hour);
   draw_str(
     ctx,
-    is_12h() && hours < 10 ? '\0' : to_char(hours / 10),
+    to_char(hours / 10),
     to_char(hours % 10),
     hour_dims,
     (GPoint){.x=areas.main.origin.x, .y=hour_digit_y}
