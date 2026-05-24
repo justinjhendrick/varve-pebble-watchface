@@ -9,22 +9,40 @@ typedef struct ClaySettings {
   uint8_t reserved[40]; // for later growth
 } __attribute__((__packed__)) ClaySettings;
 
-#define DEBUG (false)
+#define DEBUG_TIME (false)
+#define DEBUG_BBOX (false)
 #define FORCE_12H (false)
 #define BUFFER_LEN (40)
+
+#if PBL_DISPLAY_WIDTH >= 200
+  #define DATE_FONT_KEY (RESOURCE_ID_TOMORROW_30)
+  #define DATE_HEIGHT (40)
+  #define HOUR_STROKE (8)
+  #define HOUR_GAP (10)
+  #define MINUTE_STROKE (4)
+  #define MINUTE_GAP (3)
+#else
+  #define DATE_FONT_KEY (RESOURCE_ID_TOMORROW_22)
+  #define DATE_HEIGHT (30)
+  #define HOUR_STROKE (6)
+  #define HOUR_GAP (7)
+  #define MINUTE_STROKE (3)
+  #define MINUTE_GAP (2)
+#endif
 
 static Window* window;
 static Layer* layer;
 static GPoint points[16];
 static ClaySettings settings;
 static char buffer[BUFFER_LEN];
+static GFont s_font = NULL;
 
 static void default_settings() {
-  settings.color_background = GColorBlack;
-  settings.color_hour = COLOR_FALLBACK(GColorMelon, GColorWhite);
-  settings.color_minute = COLOR_FALLBACK(GColorCeleste, GColorWhite);
-  settings.color_border = COLOR_FALLBACK(GColorMintGreen, GColorWhite);
-  settings.color_date = GColorBlack;
+  settings.color_background = GColorWhite;
+  settings.color_hour = GColorBlack;
+  settings.color_minute = GColorBlack;
+  settings.color_border = GColorBlack;
+  settings.color_date = GColorWhite;
 }
 
 static int fill_0() {
@@ -141,27 +159,7 @@ static int fill_A() {
   return 7;
 }
 
-static int fill_P() {
-  points[0] = (GPoint){.x=0, .y=3};
-  points[1] = (GPoint){.x=2, .y=4};
-  points[2] = (GPoint){.x=4, .y=3};
-  points[3] = (GPoint){.x=4, .y=1};
-  points[4] = (GPoint){.x=2, .y=0};
-  points[5] = (GPoint){.x=0, .y=1};
-  points[6] = (GPoint){.x=0, .y=8};
-  return 7;
-}
-
-static int fill_M() {
-  points[0] = (GPoint){.x=0, .y=8};
-  points[1] = (GPoint){.x=0, .y=0};
-  points[2] = (GPoint){.x=2, .y=4};
-  points[3] = (GPoint){.x=4, .y=0};
-  points[4] = (GPoint){.x=4, .y=8};
-  return 5;
-}
-
-static void draw_char(GContext* ctx, char c, int block_size, GPoint tl_corner) {
+static void draw_char(GContext* ctx, char c, GRect bbox) {
   int num_points = 0;
   switch (c) {
     case '0': num_points = fill_0(); break;
@@ -175,75 +173,66 @@ static void draw_char(GContext* ctx, char c, int block_size, GPoint tl_corner) {
     case '8': num_points = fill_8(); break;
     case '9': num_points = fill_9(); break;
     case 'A': num_points = fill_A(); break;
-    case 'P': num_points = fill_P(); break;
-    case 'M': num_points = fill_M(); break;
-    default: break;
+    default: return;
   }
-  int sw = block_size - 2;
-  if (sw < 1) sw = 1;
-  graphics_context_set_stroke_width(ctx, sw);
+  static const int X = 4;
+  static const int Y = 8;
+  int x_scale = bbox.size.w / X;
+  int y_scale = bbox.size.h / Y;
   for (int i = 1; i < num_points; i++) {
     GPoint* prev = points + i - 1;
     GPoint* this = points + i;
     graphics_draw_line(
       ctx,
-      (GPoint){.x=tl_corner.x + prev->x * block_size, .y=tl_corner.y + prev->y * block_size},
-      (GPoint){.x=tl_corner.x + this->x * block_size, .y=tl_corner.y + this->y * block_size}
+      (GPoint){.x=bbox.origin.x + prev->x * x_scale, .y=bbox.origin.y + prev->y * y_scale},
+      (GPoint){.x=bbox.origin.x + this->x * x_scale, .y=bbox.origin.y + this->y * y_scale}
     );
+  }
+  if (DEBUG_BBOX) {
+    graphics_context_set_stroke_width(ctx, 1);
+    graphics_draw_rect(ctx, bbox);
   }
 }
 
-typedef struct Dimensions {
-  int actual_width;
-  int block_size;
-  int border;
-  int gap;
-  int char_width;
-  int height;
-} Dimensions;
+static void draw_str(GContext* ctx, char c1, char c2, GRect bbox, int stroke, int gap) {
+  // G char GG char G
+  int char_width = (bbox.size.w - 4 * gap) / 2;
+  GRect left;
+  left.origin.x = bbox.origin.x + gap;
+  left.origin.y = bbox.origin.y;
+  left.size.w = char_width;
+  left.size.h = bbox.size.h;
+  graphics_context_set_stroke_width(ctx, stroke);
+  draw_char(ctx, c1, left);
 
-static Dimensions get_str_dimensions(int combined_width) {
-  Dimensions d;
-  int total_blocks = 10;
-  d.block_size = combined_width / total_blocks;
-  d.actual_width = combined_width - (combined_width % total_blocks);
-  d.border = d.block_size / 2;
-  d.gap = d.block_size; // between chars
-  d.char_width = 4 * d.block_size; // does not include stroke width
-  d.height = 2 * d.char_width; // does not include stroke width
-  return d;
-}
-
-static void draw_str(GContext* ctx, char c1, char c2, Dimensions d, GPoint tl_corner) {
-  draw_char(ctx, c1, d.block_size, (GPoint){.x=tl_corner.x + d.border,                        .y=tl_corner.y});
-  draw_char(ctx, c2, d.block_size, (GPoint){.x=tl_corner.x + d.border + d.char_width + d.gap, .y=tl_corner.y});
+  GRect right;
+  right.origin.x = left.origin.x + char_width + 2 * gap;
+  right.origin.y = left.origin.y;
+  right.size.w = char_width;
+  right.size.h = bbox.size.h;
+  graphics_context_set_stroke_width(ctx, stroke);
+  draw_char(ctx, c2, right);
 }
 
 typedef struct Areas {
-  GRect upper_border;
   GRect main;
   GRect lower_border;
 } Areas;
 
-static Areas make_borders(GRect in, int xborder, int yborder) {
-  int text_yfudge = 4;
-  int text_xfudge = 8;
-  int y = in.origin.y;
+static Areas make_borders(GRect in, int border_height) {
   Areas a;
-  a.upper_border = (GRect){
-    .origin = (GPoint){.x = in.origin.x + text_xfudge, .y = y - text_yfudge},
-    .size = (GSize){.w = in.size.w - 2 * text_xfudge, .h = yborder}
-  };
-  y += yborder;
-  int main_h = in.size.h - 2 * yborder;
+  int top = 10;
+  int bot = 6;
+  int left = 4;
+  int right = 4;
+
   a.main = (GRect){
-    .origin = (GPoint){.x = in.origin.x + xborder, .y = y},
-    .size = (GSize){.w = in.size.w - 2 * xborder, .h = main_h}
+    .origin = (GPoint){.x = in.origin.x + left, .y = in.origin.y + top},
+    .size = (GSize){.w = in.size.w - left - right, .h = in.size.h - border_height - top - bot}
   };
-  y += main_h;
   a.lower_border = (GRect){
-    .origin = (GPoint){.x = in.origin.x + text_xfudge, .y = y - text_yfudge},
-    .size = (GSize){.w = in.size.w - 2 * text_xfudge, .h = yborder}
+    .origin = (GPoint){.x = in.origin.x, .y = in.size.h - border_height},
+    .size = (GSize){.w = in.size.w, .h = border_height}
   };
   return a;
 }
@@ -252,21 +241,13 @@ static bool is_12h() {
   return FORCE_12H || !clock_is_24h_style();
 }
 
-static void format_day_of_week(struct tm* now, char* buf, int len) {
-  strftime(buf, len, "%A", now);
-}
-
-static void format_am_pm(struct tm* now, char* buf, int len) {
-  strftime(buf, len, "%p", now);
-}
-
-static void format_day_and_month(struct tm* now, char* buf, int len) {
-  strftime(buf, len, "%B %e", now);
+static void format_date(struct tm* now, char* buf, int len) {
+  strftime(buf, len, "%a %d %b", now);
 }
 
 static int get_hours(struct tm* now) {
   int hours = now->tm_hour;
-  if (DEBUG) {
+  if (DEBUG_TIME) {
     hours = now->tm_sec % 24;
   }
   if (is_12h()) {
@@ -277,10 +258,10 @@ static int get_hours(struct tm* now) {
   }
   return hours;
 }
-  
+
 static int get_minutes(struct tm* now) {
   int minutes = now->tm_min;
-  if (DEBUG) {
+  if (DEBUG_TIME) {
     minutes = now->tm_sec;
   }
   return minutes;
@@ -290,51 +271,66 @@ static char to_char(int digit) {
   return digit + 0x30;
 }
 
+static void draw_text_shifted(GContext* ctx, const char* buffer, GRect bbox, GFont font, int shift_up) {
+  GRect fixed_bbox = GRect(bbox.origin.x, bbox.origin.y - shift_up, bbox.size.w, bbox.size.h);
+  graphics_draw_text(ctx, buffer, font, fixed_bbox, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+}
+
 static void update_layer(Layer* layer, GContext* ctx) {
   time_t temp = time(NULL);
   struct tm* now = localtime(&temp);
 
-  Areas areas = make_borders(layer_get_bounds(layer), 0, 30);
-  window_set_background_color(window, settings.color_border);
-  graphics_context_set_fill_color(ctx, settings.color_background);
-  graphics_fill_rect(ctx, areas.main, 0, GCornerNone);
-  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_28);
+  GRect obstructed = layer_get_bounds(layer);
+  GRect unobstructed = layer_get_unobstructed_bounds(layer);
+  bool timeline_quick_view = (unobstructed.size.h < obstructed.size.h - 1);
+  window_set_background_color(window, settings.color_background);
 
-  graphics_context_set_text_color(ctx, settings.color_date);
-  if (is_12h()) {
-    format_day_of_week(now, buffer, BUFFER_LEN);
-    graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentLeft, NULL);
-    format_am_pm(now, buffer, BUFFER_LEN);
-    graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentRight, NULL);
-  } else {
-    format_day_of_week(now, buffer, BUFFER_LEN);
-    graphics_draw_text(ctx, buffer, font, areas.upper_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  int lower_border_height = DATE_HEIGHT;
+  if (timeline_quick_view) {
+    lower_border_height = 0;
   }
-  format_day_and_month(now, buffer, BUFFER_LEN);
-  graphics_draw_text(ctx, buffer, font, areas.lower_border, GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+  Areas areas = make_borders(unobstructed, lower_border_height);
+
+  graphics_context_set_fill_color(ctx, settings.color_border);
+  graphics_fill_rect(ctx, areas.lower_border, 0, GCornerNone);
+  graphics_context_set_text_color(ctx, settings.color_date);
+  format_date(now, buffer, BUFFER_LEN);
+  draw_text_shifted(ctx, buffer, areas.lower_border, s_font, 0);
 
   // hours
-  int desired_hour_width = areas.main.size.w * 3 / 4;
-  Dimensions hour_dims = get_str_dimensions(desired_hour_width);
-  int extra_hour_space = areas.main.size.h - hour_dims.height;
-  int hour_digit_y = areas.main.origin.y + extra_hour_space / 2;
+  GRect hour_bbox;
+  hour_bbox.origin.x = areas.main.origin.x;
+  hour_bbox.origin.y = areas.main.origin.y;
+  hour_bbox.size.w = areas.main.size.w * 3 / 4;
+  hour_bbox.size.h = areas.main.size.h;
   int hours = get_hours(now);
   graphics_context_set_stroke_color(ctx, settings.color_hour);
   draw_str(
     ctx,
     to_char(hours / 10),
     to_char(hours % 10),
-    hour_dims,
-    (GPoint){.x=areas.main.origin.x, .y=hour_digit_y}
+    hour_bbox,
+    HOUR_STROKE,
+    HOUR_GAP
   );
 
   // minutes
-  int minute_width = areas.main.size.w - hour_dims.actual_width;
-  Dimensions minute_dims = get_str_dimensions(minute_width);
+  GRect minute_bbox;
   int minutes = get_minutes(now);
-  int minute_y = hour_digit_y + minutes * (hour_dims.height - minute_dims.height) / 60;
+  minute_bbox.size.w = areas.main.size.w - hour_bbox.size.w;
+  minute_bbox.size.h = hour_bbox.size.h / 4;
+  minute_bbox.origin.x = hour_bbox.origin.x + hour_bbox.size.w;
+  minute_bbox.origin.y = hour_bbox.origin.y + minutes * (hour_bbox.size.h - minute_bbox.size.h) / 60;
+  graphics_context_set_stroke_width(ctx, 3);
   graphics_context_set_stroke_color(ctx, settings.color_minute);
-  draw_str(ctx, to_char(minutes / 10), to_char(minutes % 10), minute_dims, (GPoint){.x=areas.main.origin.x + hour_dims.actual_width, .y=minute_y});
+  draw_str(
+    ctx,
+    to_char(minutes / 10),
+    to_char(minutes % 10),
+    minute_bbox,
+    MINUTE_STROKE,
+    MINUTE_GAP
+  );
 }
 
 static void window_load(Window* window) {
@@ -358,6 +354,7 @@ static void tick_handler(struct tm* now, TimeUnits unitchanged) {
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {}
 
 static void init(void) {
+  s_font = fonts_load_custom_font(resource_get_handle(DATE_FONT_KEY));
   default_settings();
   app_message_register_inbox_received(inbox_received_handler);
   app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
@@ -368,11 +365,12 @@ static void init(void) {
     .unload = window_unload,
   });
   window_stack_push(window, true);
-  tick_timer_service_subscribe(DEBUG ? SECOND_UNIT : MINUTE_UNIT, tick_handler);
+  tick_timer_service_subscribe(DEBUG_TIME ? SECOND_UNIT : MINUTE_UNIT, tick_handler);
 }
 
 static void deinit(void) {
-  if (window) window_destroy(window);
+  if (window) { window_destroy(window); }
+  if (s_font) { fonts_unload_custom_font(s_font); }
 }
 
 int main(void) {

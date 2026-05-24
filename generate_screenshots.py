@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import time
 from pathlib import Path
 import sys
 import json
@@ -14,6 +15,7 @@ def main() -> int:
         check_call(["pebble", "wipe"])
         check_call(["pebble", "kill"])
         check_call(["pebble", "install", "--emulator", platform])
+        time.sleep(0.3)
         check_call(["pebble", "screenshot", f"screenshot_{platform}.png"])
     check_call(["pebble", "wipe"])
     check_call(["pebble", "kill"])

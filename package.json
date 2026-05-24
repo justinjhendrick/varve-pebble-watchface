@@ -24,7 +24,10 @@
       "dummy"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {"name": "TOMORROW_30", "file": "fonts/Tomorrow-Regular.ttf", "type": "font"},
+        {"name": "TOMORROW_22", "file": "fonts/Tomorrow-Regular.ttf", "type": "font"}
+      ]
     }
   }
 }
