@@ -1,10 +1,21 @@
 {
   "name": "varve",
   "author": "justinjhendrick",
-  "version": "1.1.0",
-  "keywords": ["digital", "nordic", "runes", "bands", "layers", "minimal"],
+  "version": "2.0.0",
+  "keywords": [
+    "digital",
+    "nordic",
+    "scandinavian",
+    "runes",
+    "minimal",
+    "configurable",
+    "super-S",
+    "cool-S"
+  ],
   "private": true,
-  "dependencies": {},
+  "dependencies": {
+    "@rebble/clay": "^1.0.8"
+  },
   "pebble": {
     "displayName": "Varv",
     "uuid": "df521b77-5ee3-48be-9554-2cfab66fd583",
@@ -21,7 +32,11 @@
       "watchface": true
     },
     "messageKeys": [
-      "dummy"
+      "color_background",
+      "color_hour",
+      "color_minute",
+      "color_border",
+      "color_date"
     ],
     "resources": {
       "media": [

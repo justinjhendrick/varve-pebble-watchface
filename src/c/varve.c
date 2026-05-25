@@ -9,6 +9,9 @@ typedef struct ClaySettings {
   uint8_t reserved[40]; // for later growth
 } __attribute__((__packed__)) ClaySettings;
 
+#define SETTINGS_VERSION_KEY (1)
+#define SETTINGS_KEY (2)
+
 #define DEBUG_TIME (false)
 #define DEBUG_BBOX (false)
 #define FORCE_12H (false)
@@ -38,11 +41,11 @@ static char buffer[BUFFER_LEN];
 static GFont s_font = NULL;
 
 static void default_settings() {
-  settings.color_background = GColorWhite;
+  settings.color_background = COLOR_FALLBACK(GColorPictonBlue, GColorWhite);
   settings.color_hour = GColorBlack;
   settings.color_minute = GColorBlack;
   settings.color_border = GColorBlack;
-  settings.color_date = GColorWhite;
+  settings.color_date = COLOR_FALLBACK(GColorRajah, GColorWhite);
 }
 
 static int fill_0() {
@@ -148,31 +151,19 @@ static int fill_9() {
   return 8;
 }
 
-static int fill_A() {
-  points[0] = (GPoint){.x=0, .y=8};
-  points[1] = (GPoint){.x=0, .y=4};
-  points[2] = (GPoint){.x=2, .y=0};
-  points[3] = (GPoint){.x=4, .y=4};
-  points[4] = (GPoint){.x=0, .y=4};
-  points[5] = (GPoint){.x=4, .y=4};
-  points[6] = (GPoint){.x=4, .y=8};
-  return 7;
-}
-
-static void draw_char(GContext* ctx, char c, GRect bbox) {
+static void draw_digit(GContext* ctx, int c, GRect bbox) {
   int num_points = 0;
   switch (c) {
-    case '0': num_points = fill_0(); break;
-    case '1': num_points = fill_1(); break;
-    case '2': num_points = fill_2(); break;
-    case '3': num_points = fill_3(); break;
-    case '4': num_points = fill_4(); break;
-    case '5': num_points = fill_5(); break;
-    case '6': num_points = fill_6(); break;
-    case '7': num_points = fill_7(); break;
-    case '8': num_points = fill_8(); break;
-    case '9': num_points = fill_9(); break;
-    case 'A': num_points = fill_A(); break;
+    case 0: num_points = fill_0(); break;
+    case 1: num_points = fill_1(); break;
+    case 2: num_points = fill_2(); break;
+    case 3: num_points = fill_3(); break;
+    case 4: num_points = fill_4(); break;
+    case 5: num_points = fill_5(); break;
+    case 6: num_points = fill_6(); break;
+    case 7: num_points = fill_7(); break;
+    case 8: num_points = fill_8(); break;
+    case 9: num_points = fill_9(); break;
     default: return;
   }
   static const int X = 4;
@@ -194,8 +185,8 @@ static void draw_char(GContext* ctx, char c, GRect bbox) {
   }
 }
 
-static void draw_str(GContext* ctx, char c1, char c2, GRect bbox, int stroke, int gap) {
-  // G char GG char G
+static void draw_digits(GContext* ctx, int c1, int c2, GRect bbox, int stroke, int gap) {
+  // G c GG c G
   int char_width = (bbox.size.w - 4 * gap) / 2;
   GRect left;
   left.origin.x = bbox.origin.x + gap;
@@ -203,7 +194,7 @@ static void draw_str(GContext* ctx, char c1, char c2, GRect bbox, int stroke, in
   left.size.w = char_width;
   left.size.h = bbox.size.h;
   graphics_context_set_stroke_width(ctx, stroke);
-  draw_char(ctx, c1, left);
+  draw_digit(ctx, c1, left);
 
   GRect right;
   right.origin.x = left.origin.x + char_width + 2 * gap;
@@ -211,7 +202,7 @@ static void draw_str(GContext* ctx, char c1, char c2, GRect bbox, int stroke, in
   right.size.w = char_width;
   right.size.h = bbox.size.h;
   graphics_context_set_stroke_width(ctx, stroke);
-  draw_char(ctx, c2, right);
+  draw_digit(ctx, c2, right);
 }
 
 typedef struct Areas {
@@ -221,8 +212,8 @@ typedef struct Areas {
 
 static Areas make_borders(GRect in, int border_height) {
   Areas a;
-  int top = 10;
-  int bot = 6;
+  int top = 14;
+  int bot = 10;
   int left = 4;
   int right = 4;
 
@@ -246,6 +237,9 @@ static void format_date(struct tm* now, char* buf, int len) {
 }
 
 static int get_hours(struct tm* now) {
+#ifdef MINUTE_OVERRIDE
+  return HOUR_OVERRIDE;
+#else
   int hours = now->tm_hour;
   if (DEBUG_TIME) {
     hours = now->tm_sec % 24;
@@ -257,18 +251,19 @@ static int get_hours(struct tm* now) {
     }
   }
   return hours;
+#endif
 }
 
 static int get_minutes(struct tm* now) {
+#ifdef MINUTE_OVERRIDE
+  return MINUTE_OVERRIDE;
+#else
   int minutes = now->tm_min;
   if (DEBUG_TIME) {
     minutes = now->tm_sec;
   }
   return minutes;
-}
-
-static char to_char(int digit) {
-  return digit + 0x30;
+#endif
 }
 
 static void draw_text_shifted(GContext* ctx, const char* buffer, GRect bbox, GFont font, int shift_up) {
@@ -281,9 +276,11 @@ static void update_layer(Layer* layer, GContext* ctx) {
   struct tm* now = localtime(&temp);
 
   GRect obstructed = layer_get_bounds(layer);
+  graphics_context_set_fill_color(ctx, settings.color_background);
+  graphics_fill_rect(ctx, obstructed, 0, GCornerNone);
+
   GRect unobstructed = layer_get_unobstructed_bounds(layer);
   bool timeline_quick_view = (unobstructed.size.h < obstructed.size.h - 1);
-  window_set_background_color(window, settings.color_background);
 
   int lower_border_height = DATE_HEIGHT;
   if (timeline_quick_view) {
@@ -291,11 +288,13 @@ static void update_layer(Layer* layer, GContext* ctx) {
   }
   Areas areas = make_borders(unobstructed, lower_border_height);
 
-  graphics_context_set_fill_color(ctx, settings.color_border);
-  graphics_fill_rect(ctx, areas.lower_border, 0, GCornerNone);
-  graphics_context_set_text_color(ctx, settings.color_date);
-  format_date(now, buffer, BUFFER_LEN);
-  draw_text_shifted(ctx, buffer, areas.lower_border, s_font, 0);
+  if (!timeline_quick_view) {
+    graphics_context_set_fill_color(ctx, settings.color_border);
+    graphics_fill_rect(ctx, areas.lower_border, 0, GCornerNone);
+    graphics_context_set_text_color(ctx, settings.color_date);
+    format_date(now, buffer, BUFFER_LEN);
+    draw_text_shifted(ctx, buffer, areas.lower_border, s_font, 0);
+  }
 
   // hours
   GRect hour_bbox;
@@ -305,10 +304,10 @@ static void update_layer(Layer* layer, GContext* ctx) {
   hour_bbox.size.h = areas.main.size.h;
   int hours = get_hours(now);
   graphics_context_set_stroke_color(ctx, settings.color_hour);
-  draw_str(
+  draw_digits(
     ctx,
-    to_char(hours / 10),
-    to_char(hours % 10),
+    hours / 10,
+    hours % 10,
     hour_bbox,
     HOUR_STROKE,
     HOUR_GAP
@@ -323,10 +322,10 @@ static void update_layer(Layer* layer, GContext* ctx) {
   minute_bbox.origin.y = hour_bbox.origin.y + minutes * (hour_bbox.size.h - minute_bbox.size.h) / 60;
   graphics_context_set_stroke_width(ctx, 3);
   graphics_context_set_stroke_color(ctx, settings.color_minute);
-  draw_str(
+  draw_digits(
     ctx,
-    to_char(minutes / 10),
-    to_char(minutes % 10),
+    minutes / 10,
+    minutes % 10,
     minute_bbox,
     MINUTE_STROKE,
     MINUTE_GAP
@@ -347,17 +346,38 @@ static void window_unload(Window* window) {
 }
 
 static void tick_handler(struct tm* now, TimeUnits unitchanged) {
-  layer_mark_dirty(window_get_root_layer(window));
+  if (layer) layer_mark_dirty(layer);
 }
 
-// TODO Configuration
-static void inbox_received_handler(DictionaryIterator *iter, void *context) {}
+static void load_settings() {
+  default_settings();
+  // If we need a backwards incompatible version of settings, check SETTINGS_VERSION_KEY and migrate
+  persist_read_data(SETTINGS_KEY, &settings, sizeof(ClaySettings));
+}
+
+static void save_settings() {
+  persist_write_int(SETTINGS_VERSION_KEY, 1);
+  persist_write_data(SETTINGS_KEY, &settings, sizeof(ClaySettings));
+}
+
+static void inbox_received_handler(DictionaryIterator *iter, void *context) {
+  Tuple *t;
+  if ((t = dict_find(iter, MESSAGE_KEY_color_background ))) { settings.color_background = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_hour       ))) { settings.color_hour       = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_minute     ))) { settings.color_minute     = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_border     ))) { settings.color_border     = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_date       ))) { settings.color_date       = GColorFromHEX(t->value->int32); }
+  save_settings();
+  // Update the display based on new settings
+  if (layer) { layer_mark_dirty(layer); }
+}
 
 static void init(void) {
   s_font = fonts_load_custom_font(resource_get_handle(DATE_FONT_KEY));
-  default_settings();
+  load_settings();
+
   app_message_register_inbox_received(inbox_received_handler);
-  app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
+  app_message_open(1024, 64);
 
   window = window_create();
   window_set_window_handlers(window, (WindowHandlers) {
@@ -369,6 +389,7 @@ static void init(void) {
 }
 
 static void deinit(void) {
+  tick_timer_service_unsubscribe();
   if (window) { window_destroy(window); }
   if (s_font) { fonts_unload_custom_font(s_font); }
 }
