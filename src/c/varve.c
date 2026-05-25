@@ -237,7 +237,7 @@ static void format_date(struct tm* now, char* buf, int len) {
 }
 
 static int get_hours(struct tm* now) {
-#ifdef MINUTE_OVERRIDE
+#ifdef HOUR_OVERRIDE
   return HOUR_OVERRIDE;
 #else
   int hours = now->tm_hour;

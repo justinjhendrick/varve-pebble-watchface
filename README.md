@@ -1,26 +1,18 @@
-# Varv
+# Varv Pebble Watch Face
 
-## Pebble Watch Face
+https://apps.repebble.com/varv_693625b95434b00008eff112
 
-### Aplite
+## Emery
 
-![screenshot](screenshot_aplite.png)
+![screenshot](screenshots_emery_08xx.gif)
 
-### Basalt
+## Aplite, Diorite, Flint
 
-![screenshot](screenshot_basalt.png)
+![screenshot](screenshots_flint_08xx.gif)
 
-### Diorite
+## Basalt
 
-![screenshot](screenshot_diorite.png)
-
-### Emery
-
-![screenshot](screenshot_emery.png)
-
-### Flint
-
-![screenshot](screenshot_flint.png)
+![screenshot](screenshots_basalt_08xx.gif)
 
 ## License
 
