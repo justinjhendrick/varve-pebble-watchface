@@ -233,6 +233,11 @@ static bool is_12h() {
 }
 
 static void format_date(struct tm* now, char* buf, int len) {
+  if (DEBUG_TIME) {
+    now->tm_mday = (now->tm_sec % 31) + 1;
+    now->tm_mon = (now->tm_sec % 12);
+    now->tm_wday = (now->tm_sec % 7);
+  }
   strftime(buf, len, "%a %d %b", now);
 }
 
