@@ -16,24 +16,25 @@ def reset() -> None:
 
 def run(platforms: list[str]) -> int:
     reset()
-    minute = 0
     screenshot_fnames = defaultdict(list)
-    while minute < 60:
+    hour = 8
+    for minute in range(60):
         env = os.environ.copy()
-        env["CFLAGS"] = f"-DHOUR_OVERRIDE=8 -DMINUTE_OVERRIDE={minute}"
+        env["CFLAGS"] = f"-DHOUR_OVERRIDE={hour} -DMINUTE_OVERRIDE={minute}"
         check_call(["pebble", "build"], env=env)
+        success_count = 0
         for platform in platforms:
-            try:
-                check_call(["pebble", "install", "--emulator", platform])
-                time.sleep(0.2)
-                screenshot_fname = f"screenshot_{platform}_08{minute:02d}.png"
-                check_call(["pebble", "screenshot", "--emulator", platform, screenshot_fname])
-                screenshot_fnames[platform].append(screenshot_fname)
-                minute += 1
-            except CalledProcessError:
-                # Sometimes install fails and I don't know why (real watch and emulator both)
-                # Sometimes screenshot fails and I don't know why (emulator only?)
-                reset()
+            while len(screenshot_fnames[platform]) < (minute + 1):
+                try:
+                    check_call(["pebble", "install", "--emulator", platform])
+                    time.sleep(0.2)
+                    screenshot_fname = f"screenshot_{platform}_{hour:02d}{minute:02d}.png"
+                    check_call(["pebble", "screenshot", "--emulator", platform, screenshot_fname])
+                    screenshot_fnames[platform].append(screenshot_fname)
+                except CalledProcessError:
+                    # Sometimes install fails and I don't know why (real watch and emulator both)
+                    # Sometimes screenshot fails and I don't know why (emulator only?)
+                    reset()
     reset()
 
     # Combine all the pngs into one gif with ImageMagick
@@ -49,7 +50,7 @@ def run(platforms: list[str]) -> int:
                 "-dispose",
                 "previous",
                 *fnames,
-                f"screenshots_{platform}_08xx.gif",
+                f"screenshots_{platform}_{hour:02d}xx.gif",
             ]
         )
 

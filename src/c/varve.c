@@ -89,9 +89,9 @@ static int fill_3() {
 
 static int fill_4() {
   points[0] = (GPoint){.x=3, .y=0};
-  points[1] = (GPoint){.x=0, .y=3};
-  points[2] = (GPoint){.x=4, .y=3};
-  points[3] = (GPoint){.x=3, .y=2};
+  points[1] = (GPoint){.x=0, .y=4};
+  points[2] = (GPoint){.x=4, .y=4};
+  points[3] = (GPoint){.x=3, .y=3};
   points[4] = (GPoint){.x=3, .y=8};
   return 5;
 }
