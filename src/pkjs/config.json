@@ -25,6 +25,13 @@
     ]
   },
   {
+    "type": "section",
+    "items": [
+      { "type": "heading", "defaultValue": "Behavior" },
+      { "type": "input",  "messageKey": "step_goal", "defaultValue": "10000", "label": "step_goal" }
+    ]
+  },
+  {
     "type": "submit",
     "defaultValue": "Save Settings"
   }

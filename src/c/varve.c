@@ -1,12 +1,15 @@
 #include <pebble.h>
 
+#define SETTINGS_RESERVED_BYTES (36)
+
 typedef struct ClaySettings {
   GColor color_background;
   GColor color_hour;
   GColor color_minute;
   GColor color_border;
   GColor color_date;
-  uint8_t reserved[40]; // for later growth
+  int step_goal;
+  uint8_t reserved[SETTINGS_RESERVED_BYTES];
 } __attribute__((__packed__)) ClaySettings;
 
 #define SETTINGS_VERSION_KEY (1)
@@ -17,8 +20,11 @@ typedef struct ClaySettings {
 #define FORCE_12H (false)
 #define BUFFER_LEN (40)
 
+#define DEFAULT_STEP_GOAL (10000)
+
 #if PBL_DISPLAY_WIDTH >= 200
   #define DATE_FONT_KEY (RESOURCE_ID_TOMORROW_30)
+  #define STEPS_HEIGHT (20)
   #define DATE_HEIGHT (40)
   #define HOUR_STROKE (8)
   #define HOUR_GAP (10)
@@ -26,6 +32,7 @@ typedef struct ClaySettings {
   #define MINUTE_GAP (3)
 #else
   #define DATE_FONT_KEY (RESOURCE_ID_TOMORROW_22)
+  #define STEPS_HEIGHT (15)
   #define DATE_HEIGHT (30)
   #define HOUR_STROKE (6)
   #define HOUR_GAP (7)
@@ -46,6 +53,12 @@ static void default_settings() {
   settings.color_minute = GColorBlack;
   settings.color_border = GColorBlack;
   settings.color_date = COLOR_FALLBACK(GColorRajah, GColorWhite);
+  // below here added in v2 of settings
+  settings.step_goal = DEFAULT_STEP_GOAL;
+
+  for (int i = 0; i < SETTINGS_RESERVED_BYTES; i++) {
+    settings.reserved[i] = 0;
+  }
 }
 
 static int fill_0() {
@@ -206,24 +219,47 @@ static void draw_digits(GContext* ctx, int c1, int c2, GRect bbox, int stroke, i
 }
 
 typedef struct Areas {
+  GRect upper_border;
   GRect main;
   GRect lower_border;
 } Areas;
 
-static Areas make_borders(GRect in, int border_height) {
+static Areas make_borders(GRect in, int upper_border_height, int lower_border_height) {
   Areas a;
   int top = 14;
   int bot = 10;
   int left = 4;
   int right = 4;
 
+  a.upper_border = (GRect){
+    .origin = (GPoint){
+      .x = in.origin.x,
+      .y = in.origin.y
+    },
+    .size = (GSize){
+      .w = in.size.w,
+      .h = upper_border_height
+    }
+  };
   a.main = (GRect){
-    .origin = (GPoint){.x = in.origin.x + left, .y = in.origin.y + top},
-    .size = (GSize){.w = in.size.w - left - right, .h = in.size.h - border_height - top - bot}
+    .origin = (GPoint){
+      .x = in.origin.x + left,
+      .y = in.origin.y + top + upper_border_height
+    },
+    .size = (GSize){
+      .w = in.size.w - left - right,
+      .h = in.size.h - upper_border_height - lower_border_height - top - bot
+    }
   };
   a.lower_border = (GRect){
-    .origin = (GPoint){.x = in.origin.x, .y = in.size.h - border_height},
-    .size = (GSize){.w = in.size.w, .h = border_height}
+    .origin = (GPoint){
+      .x = in.origin.x,
+      .y = in.size.h - lower_border_height
+    },
+    .size = (GSize){
+      .w = in.size.w,
+      .h = lower_border_height
+    }
   };
   return a;
 }
@@ -287,18 +323,51 @@ static void update_layer(Layer* layer, GContext* ctx) {
   GRect unobstructed = layer_get_unobstructed_bounds(layer);
   bool timeline_quick_view = (unobstructed.size.h < obstructed.size.h - 1);
 
+  int upper_border_height = STEPS_HEIGHT;
+  if (settings.step_goal == 0) {
+    upper_border_height = 0;
+  }
   int lower_border_height = DATE_HEIGHT;
   if (timeline_quick_view) {
     lower_border_height = 0;
   }
-  Areas areas = make_borders(unobstructed, lower_border_height);
+  Areas areas = make_borders(unobstructed, upper_border_height, lower_border_height);
 
   if (!timeline_quick_view) {
+    // Date
     graphics_context_set_fill_color(ctx, settings.color_border);
     graphics_fill_rect(ctx, areas.lower_border, 0, GCornerNone);
     graphics_context_set_text_color(ctx, settings.color_date);
     format_date(now, buffer, BUFFER_LEN);
     draw_text_shifted(ctx, buffer, areas.lower_border, s_font, 0);
+  }
+
+  if (settings.step_goal != 0) {
+    // Steps
+    int steps = health_service_sum_today(HealthMetricStepCount);
+    GColor step_color;
+    if (steps > settings.step_goal * 2 / 3) {
+      step_color = GColorYellow; // Gold
+    } else if (steps > settings.step_goal / 3) {
+      step_color = GColorLightGray; // Silver
+    } else {
+      step_color = GColorWindsorTan; // Bronze
+    }
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_fill_rect(ctx, areas.upper_border, 0, GCornerNone);
+    int steps_y = areas.upper_border.origin.y + areas.upper_border.size.h / 2;
+    int steps_x = steps * areas.upper_border.size.w / settings.step_goal;
+    graphics_context_set_stroke_color(ctx, step_color);
+    graphics_context_set_stroke_width(ctx, areas.upper_border.size.h / 2);
+    GPoint start = (GPoint){
+      .x = areas.upper_border.origin.x,
+      .y = steps_y
+    };
+    GPoint end = (GPoint){
+      .x = steps_x,
+      .y = steps_y
+    };
+    graphics_draw_line(ctx, start, end);
   }
 
   // hours
@@ -356,12 +425,19 @@ static void tick_handler(struct tm* now, TimeUnits unitchanged) {
 
 static void load_settings() {
   default_settings();
-  // If we need a backwards incompatible version of settings, check SETTINGS_VERSION_KEY and migrate
+  int loaded_version = persist_read_int(SETTINGS_VERSION_KEY);
   persist_read_data(SETTINGS_KEY, &settings, sizeof(ClaySettings));
+
+  // Migrate from older settings versions
+  // because they persists between upgrades.
+  if (loaded_version == 1) {
+    // This was in an undefined array before.
+    settings.step_goal = DEFAULT_STEP_GOAL;
+  }
 }
 
 static void save_settings() {
-  persist_write_int(SETTINGS_VERSION_KEY, 1);
+  persist_write_int(SETTINGS_VERSION_KEY, 2);
   persist_write_data(SETTINGS_KEY, &settings, sizeof(ClaySettings));
 }
 
@@ -372,6 +448,7 @@ static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   if ((t = dict_find(iter, MESSAGE_KEY_color_minute     ))) { settings.color_minute     = GColorFromHEX(t->value->int32); }
   if ((t = dict_find(iter, MESSAGE_KEY_color_border     ))) { settings.color_border     = GColorFromHEX(t->value->int32); }
   if ((t = dict_find(iter, MESSAGE_KEY_color_date       ))) { settings.color_date       = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_step_goal        ))) { settings.step_goal        = atoi(t->value->cstring);        }
   save_settings();
   // Update the display based on new settings
   if (layer) { layer_mark_dirty(layer); }

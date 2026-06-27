@@ -1,7 +1,7 @@
 {
   "name": "varve",
   "author": "justinjhendrick",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "keywords": [
     "digital",
     "nordic",
@@ -36,7 +36,8 @@
       "color_hour",
       "color_minute",
       "color_border",
-      "color_date"
+      "color_date",
+      "step_goal"
     ],
     "resources": {
       "media": [
