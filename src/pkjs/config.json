@@ -28,7 +28,8 @@
     "type": "section",
     "items": [
       { "type": "heading", "defaultValue": "Behavior" },
-      { "type": "input",  "messageKey": "step_goal", "defaultValue": "10000", "label": "step_goal" }
+      { "type": "input",  "messageKey": "step_goal", "defaultValue": "10000", "label": "step_goal" },
+      { "type": "toggle", "messageKey": "show_leading_zero_in_12h", "defaultValue": false, "label": "show_leading_zero_in_12h" }
     ]
   },
   {

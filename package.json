@@ -37,7 +37,8 @@
       "color_minute",
       "color_border",
       "color_date",
-      "step_goal"
+      "step_goal",
+      "show_leading_zero_in_12h"
     ],
     "resources": {
       "media": [

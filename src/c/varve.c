@@ -1,6 +1,6 @@
 #include <pebble.h>
 
-#define SETTINGS_RESERVED_BYTES (36)
+#define SETTINGS_RESERVED_BYTES (35)
 
 typedef struct ClaySettings {
   GColor color_background;
@@ -9,6 +9,7 @@ typedef struct ClaySettings {
   GColor color_border;
   GColor color_date;
   int step_goal;
+  bool show_leading_zero_in_12h;
   uint8_t reserved[SETTINGS_RESERVED_BYTES];
 } __attribute__((__packed__)) ClaySettings;
 
@@ -53,8 +54,9 @@ static void default_settings() {
   settings.color_minute = GColorBlack;
   settings.color_border = GColorBlack;
   settings.color_date = COLOR_FALLBACK(GColorRajah, GColorWhite);
-  // below here added in v2 of settings
+  // above here from v1 of settings
   settings.step_goal = DEFAULT_STEP_GOAL;
+  settings.show_leading_zero_in_12h = false;
 
   for (int i = 0; i < SETTINGS_RESERVED_BYTES; i++) {
     settings.reserved[i] = 0;
@@ -378,10 +380,11 @@ static void update_layer(Layer* layer, GContext* ctx) {
   hour_bbox.size.w = areas.main.size.w * 3 / 4;
   hour_bbox.size.h = areas.main.size.h;
   int hours = get_hours(now);
+  bool hide_leading_zero = is_12h() && hours < 10 && !settings.show_leading_zero_in_12h;
   graphics_context_set_stroke_color(ctx, settings.color_hour);
   draw_digits(
     ctx,
-    hours / 10,
+    hide_leading_zero ? -1 : (hours / 10),
     hours % 10,
     hour_bbox,
     HOUR_STROKE,
@@ -392,7 +395,7 @@ static void update_layer(Layer* layer, GContext* ctx) {
   GRect minute_bbox;
   int minutes = get_minutes(now);
   minute_bbox.size.w = areas.main.size.w - hour_bbox.size.w;
-  minute_bbox.size.h = hour_bbox.size.h / 4;
+  minute_bbox.size.h = hour_bbox.size.h * 3 / 10;
   minute_bbox.origin.x = hour_bbox.origin.x + hour_bbox.size.w;
   minute_bbox.origin.y = hour_bbox.origin.y + minutes * (hour_bbox.size.h - minute_bbox.size.h) / 60;
   graphics_context_set_stroke_width(ctx, 3);
@@ -434,6 +437,7 @@ static void load_settings() {
   if (loaded_version == 1) {
     // This was in an undefined array before.
     settings.step_goal = DEFAULT_STEP_GOAL;
+    settings.show_leading_zero_in_12h = false;
   }
 }
 
@@ -444,12 +448,13 @@ static void save_settings() {
 
 static void inbox_received_handler(DictionaryIterator *iter, void *context) {
   Tuple *t;
-  if ((t = dict_find(iter, MESSAGE_KEY_color_background ))) { settings.color_background = GColorFromHEX(t->value->int32); }
-  if ((t = dict_find(iter, MESSAGE_KEY_color_hour       ))) { settings.color_hour       = GColorFromHEX(t->value->int32); }
-  if ((t = dict_find(iter, MESSAGE_KEY_color_minute     ))) { settings.color_minute     = GColorFromHEX(t->value->int32); }
-  if ((t = dict_find(iter, MESSAGE_KEY_color_border     ))) { settings.color_border     = GColorFromHEX(t->value->int32); }
-  if ((t = dict_find(iter, MESSAGE_KEY_color_date       ))) { settings.color_date       = GColorFromHEX(t->value->int32); }
-  if ((t = dict_find(iter, MESSAGE_KEY_step_goal        ))) { settings.step_goal        = atoi(t->value->cstring);        }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_background         ))) { settings.color_background          = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_hour               ))) { settings.color_hour                = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_minute             ))) { settings.color_minute              = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_border             ))) { settings.color_border              = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_color_date               ))) { settings.color_date                = GColorFromHEX(t->value->int32); }
+  if ((t = dict_find(iter, MESSAGE_KEY_step_goal                ))) { settings.step_goal                 = atoi(t->value->cstring);        }
+  if ((t = dict_find(iter, MESSAGE_KEY_show_leading_zero_in_12h ))) { settings.show_leading_zero_in_12h  = t->value->int8;                 }
   save_settings();
   // Update the display based on new settings
   if (layer) { layer_mark_dirty(layer); }
