@@ -322,9 +322,10 @@ static void update_layer(Layer* layer, GContext* ctx) {
 
   GRect unobstructed = layer_get_unobstructed_bounds(layer);
   bool timeline_quick_view = (unobstructed.size.h < obstructed.size.h - 1);
+  bool draw_steps = !timeline_quick_view && settings.step_goal != 0;
 
   int upper_border_height = STEPS_HEIGHT;
-  if (settings.step_goal == 0) {
+  if (!draw_steps) {
     upper_border_height = 0;
   }
   int lower_border_height = DATE_HEIGHT;
@@ -342,7 +343,7 @@ static void update_layer(Layer* layer, GContext* ctx) {
     draw_text_shifted(ctx, buffer, areas.lower_border, s_font, 0);
   }
 
-  if (settings.step_goal != 0) {
+  if (draw_steps) {
     // Steps
     int steps = health_service_sum_today(HealthMetricStepCount);
     GColor step_color;
